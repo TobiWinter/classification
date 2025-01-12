@@ -28,6 +28,8 @@
 
     <p id="prediction">Awaiting data...</p>
 
+    <p id="debugSensorData"></p>
+
     <script>
         // Rolling window data will be stored here
         // Each entry: { t, x, y, z, alpha, beta, gamma }
@@ -125,6 +127,13 @@
             while (dataBuffer.length > 0 && (now - dataBuffer[0].t) > ROLLING_WINDOW_MS) {
                 dataBuffer.shift();
             }
+
+            // Debugging: Display current sensor values on screen
+            const debugDataEl = document.getElementById("debugSensorData");
+            debugDataEl.textContent =
+                `ax: ${ax.toFixed(2)}   ay: ${ay.toFixed(2)}   az: ${az.toFixed(2)}\n` +
+                `alpha: ${alpha.toFixed(2)}   beta: ${beta.toFixed(2)}   gamma: ${gamma.toFixed(2)}`;
+
 
             // Only compute stats if we have enough data
             if (dataBuffer.length > 0) {
