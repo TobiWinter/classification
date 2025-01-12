@@ -22,6 +22,10 @@
     <p>
         Move or rotate your mobile device to see real-time classification of activity:
     </p>
+
+    <!-- Button to request sensor permissions -->
+    <button id="requestPermissionBtn">Request Sensor Permission</button>
+
     <p id="prediction">Awaiting data...</p>
 
     <script>
@@ -33,76 +37,125 @@
         // Duration of rolling window in milliseconds
         const ROLLING_WINDOW_MS = 1000;
 
-        // Listen for orientation (alpha, beta, gamma)
-        if (window.DeviceOrientationEvent) {
-            window.addEventListener("deviceorientation", (event) => {
-                alpha = event.alpha || 0;
-                beta = event.beta || 0;
-                gamma = event.gamma || 0;
-            });
-        } else {
-            console.warn("DeviceOrientationEvent not supported on this device/browser.");
+        // 1) On button click, request motion/orientation permission if needed
+        const requestPermissionBtn = document.getElementById('requestPermissionBtn');
+        requestPermissionBtn.addEventListener('click', async () => {
+            // Request Device Motion permission on iOS Safari
+            if (typeof DeviceMotionEvent !== 'undefined' &&
+                typeof DeviceMotionEvent.requestPermission === 'function') {
+                try {
+                    const motionPermission = await DeviceMotionEvent.requestPermission();
+                    if (motionPermission === 'granted') {
+                        console.log('DeviceMotion Permission Granted');
+                        attachMotionListener(); // Start listening
+                    } else {
+                        console.warn('DeviceMotion Permission Denied or Dismissed');
+                    }
+                } catch (err) {
+                    console.error('Error requesting DeviceMotion permission:', err);
+                }
+            } else {
+                // Non-iOS or older browsers that do not require permission
+                attachMotionListener(); // Start listening
+            }
+
+            // Request Device Orientation permission on iOS Safari
+            if (typeof DeviceOrientationEvent !== 'undefined' &&
+                typeof DeviceOrientationEvent.requestPermission === 'function') {
+                try {
+                    const orientationPermission = await DeviceOrientationEvent.requestPermission();
+                    if (orientationPermission === 'granted') {
+                        console.log('DeviceOrientation Permission Granted');
+                        attachOrientationListener(); // Start listening
+                    } else {
+                        console.warn('DeviceOrientation Permission Denied or Dismissed');
+                    }
+                } catch (err) {
+                    console.error('Error requesting DeviceOrientation permission:', err);
+                }
+            } else {
+                // Non-iOS or older browsers that do not require permission
+                attachOrientationListener(); // Start listening
+            }
+        });
+
+        // 2) If permission is granted or not needed, attach orientation listener
+        function attachOrientationListener() {
+            if (window.DeviceOrientationEvent) {
+                window.addEventListener("deviceorientation", (event) => {
+                    alpha = event.alpha || 0;
+                    beta = event.beta || 0;
+                    gamma = event.gamma || 0;
+                });
+            } else {
+                console.warn("DeviceOrientationEvent not supported on this device/browser.");
+            }
         }
 
-        // Listen for motion (acceleration)
-        if (window.DeviceMotionEvent) {
-            window.addEventListener("devicemotion", (event) => {
-                const now = performance.now();
+        // 3) If permission is granted or not needed, attach motion listener
+        function attachMotionListener() {
+            if (window.DeviceMotionEvent) {
+                window.addEventListener("devicemotion", handleMotionEvent);
+            } else {
+                console.warn("DeviceMotionEvent not supported on this device/browser.");
+            }
+        }
 
-                // Acceleration might be null if not supported, so we default to 0
-                const ax = event.acceleration && event.acceleration.x ? event.acceleration.x : 0;
-                const ay = event.acceleration && event.acceleration.y ? event.acceleration.y : 0;
-                const az = event.acceleration && event.acceleration.z ? event.acceleration.z : 0;
+        // 4) Process devicemotion data (rolling window, compute stats, etc.)
+        function handleMotionEvent(event) {
+            const now = performance.now();
 
-                // Push the new sample into our buffer
-                dataBuffer.push({
-                    t: now,
-                    x: ax,
-                    y: ay,
-                    z: az,
-                    alpha: alpha,
-                    beta: beta,
-                    gamma: gamma
-                });
+            // Acceleration might be null if not supported, so default to 0
+            const ax = event.acceleration && event.acceleration.x ? event.acceleration.x : 0;
+            const ay = event.acceleration && event.acceleration.y ? event.acceleration.y : 0;
+            const az = event.acceleration && event.acceleration.z ? event.acceleration.z : 0;
 
-                // Remove any samples older than ROLLING_WINDOW_MS from the buffer
-                while (dataBuffer.length > 0 && (now - dataBuffer[0].t) > ROLLING_WINDOW_MS) {
-                    dataBuffer.shift();
-                }
-
-                // Only compute stats if we have enough data
-                if (dataBuffer.length > 0) {
-                    // Compute statistics for each axis
-                    const statsX = computeStats(dataBuffer.map(d => d.x));
-                    const statsY = computeStats(dataBuffer.map(d => d.y));
-                    const statsZ = computeStats(dataBuffer.map(d => d.z));
-                    const statsA = computeStats(dataBuffer.map(d => d.alpha));
-                    const statsB = computeStats(dataBuffer.map(d => d.beta));
-                    const statsG = computeStats(dataBuffer.map(d => d.gamma));
-
-                    // Build feature array in the order you prefer
-                    // e.g. [meanX, varX, minX, maxX, medianX, meanY, varY, ..., meanG, varG, ...]
-                    const featureArray = [
-                        statsX.mean, statsX.variance, statsX.min, statsX.max, statsX.median,
-                        statsY.mean, statsY.variance, statsY.min, statsY.max, statsY.median,
-                        statsZ.mean, statsZ.variance, statsZ.min, statsZ.max, statsZ.median,
-                        statsA.mean, statsA.variance, statsA.min, statsA.max, statsA.median,
-                        statsB.mean, statsB.variance, statsB.min, statsB.max, statsB.median,
-                        statsG.mean, statsG.variance, statsG.min, statsG.max, statsG.median
-                    ];
-
-                    // predict activity
-                    const prediction = score(featureArray);
-
-                    const activity = evaluateScore(prediction)
-
-                    // Display the result
-                    const predictionEl = document.getElementById("prediction");
-                    predictionEl.textContent = "Prediction: " + activity;
-                }
+            // Push the new sample into our buffer
+            dataBuffer.push({
+                t: now,
+                x: ax,
+                y: ay,
+                z: az,
+                alpha: alpha,
+                beta: beta,
+                gamma: gamma
             });
-        } else {
-            console.warn("DeviceMotionEvent not supported on this device/browser.");
+
+            // Remove any samples older than ROLLING_WINDOW_MS
+            while (dataBuffer.length > 0 && (now - dataBuffer[0].t) > ROLLING_WINDOW_MS) {
+                dataBuffer.shift();
+            }
+
+            // Only compute stats if we have enough data
+            if (dataBuffer.length > 0) {
+                // Compute stats for each axis
+                const statsX = computeStats(dataBuffer.map(d => d.x));
+                const statsY = computeStats(dataBuffer.map(d => d.y));
+                const statsZ = computeStats(dataBuffer.map(d => d.z));
+                const statsA = computeStats(dataBuffer.map(d => d.alpha));
+                const statsB = computeStats(dataBuffer.map(d => d.beta));
+                const statsG = computeStats(dataBuffer.map(d => d.gamma));
+
+                // Build feature array in desired order
+                const featureArray = [
+                    statsX.mean, statsX.variance, statsX.min, statsX.max, statsX.median,
+                    statsY.mean, statsY.variance, statsY.min, statsY.max, statsY.median,
+                    statsZ.mean, statsZ.variance, statsZ.min, statsZ.max, statsZ.median,
+                    statsA.mean, statsA.variance, statsA.min, statsA.max, statsA.median,
+                    statsB.mean, statsB.variance, statsB.min, statsB.max, statsB.median,
+                    statsG.mean, statsG.variance, statsG.min, statsG.max, statsG.median
+                ];
+
+                // Predict activity (returns [pSitting, pWalking, pStanding])
+                const prediction = score(featureArray);
+
+                // Evaluate to get final label
+                const activity = evaluateScore(prediction);
+
+                // Display the result
+                const predictionEl = document.getElementById("prediction");
+                predictionEl.textContent = "Prediction: " + activity;
+            }
         }
 
         /**
