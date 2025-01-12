@@ -91,12 +91,14 @@
                         statsG.mean, statsG.variance, statsG.min, statsG.max, statsG.median
                     ];
 
-                    // Use a simple heuristic/classifier to predict
+                    // predict activity
                     const prediction = score(featureArray);
+
+                    const activity = evaluateScore(prediction)
 
                     // Display the result
                     const predictionEl = document.getElementById("prediction");
-                    predictionEl.textContent = "Prediction: " + prediction;
+                    predictionEl.textContent = "Prediction: " + activity;
                 }
             });
         } else {
@@ -144,6 +146,27 @@
                 max: maxVal,
                 median: median
             };
+        }
+
+        function evaluateScore(probArray) {
+            // Find the index of the highest number
+            let maxIndex = 0;
+            let maxVal = probArray[0];
+
+            for (let i = 1; i < probArray.length; i++) {
+                if (probArray[i] > maxVal) {
+                    maxVal = probArray[i];
+                    maxIndex = i;
+                }
+            }
+
+            // Map index to activity
+            switch (maxIndex) {
+                case 0: return "sitting";
+                case 1: return "walking";
+                case 2: return "standing";
+                default: return "unknown";
+            }
         }
 
         function score(input) {
